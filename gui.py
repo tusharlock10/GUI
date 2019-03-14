@@ -4,6 +4,7 @@ from threading import Thread
 from socket import *
 from tkinter import *
 from tkinter import ttk
+from _thread import *
 
 print(sys.version)
 
@@ -104,17 +105,21 @@ class FirstPage(Frame):
 
         self.choice = StringVar()
         # input('Pause..')
-        ttk.Radiobutton(self, text='Sender', variable=self.choice, value='sender').pack()
-        ttk.Radiobutton(self, text='Receiver', variable=self.choice, value='receiver').pack()
+        ttk.Radiobutton(self, text='Sender', variable=self.choice, value='sender', command=self.enablesubmit).pack()
+        ttk.Radiobutton(self, text='Receiver', variable=self.choice, value='receiver', command=self.enablesubmit).pack()
 
         ttk.Button(self, text='Quit', command=self.master.quit).pack(side=BOTTOM)
-        ttk.Button(self, text='Submit', command=self.submit).pack()
+        self.submit_btn=ttk.Button(self, text='Submit', command=self.submit, state='disable') # Submit button
+        self.submit_btn.pack(side=BOTTOM)
 
     def submit(self):
         if self.choice.get() == 'sender':
             self.master.switch_to_page(SenderPage)
         elif self.choice.get() == 'receiver':
             self.master.switch_to_page(ReceiverPage)
+    
+    def enablesubmit(self):
+        self.submit_btn['state']='enable'
 
 
 class SenderPage(Frame):
@@ -124,11 +129,12 @@ class SenderPage(Frame):
         self.Sender = SenderConnection()
 
         # Add widgets
-        ttk.Label(self, text='SenderPage', font='"Product Sans" 22 bold').pack(side=TOP)
+        ttk.Label(self, text='Sender Page', font='"Product Sans" 22 bold').pack(side=TOP)
 
         self.host_label=Label(self, text="Enter IP address in the box below: ")
         self.host_label.pack()
         self.host_entry = ttk.Entry(self, font='"Fira Code" 14', cursor='ibeam')
+        self.host_entry.focus()
         self.host_entry.bind("<Return>", self.set_host)
         self.host_entry.pack()
 
@@ -145,10 +151,10 @@ class SenderPage(Frame):
         self.show_host.pack()
         self.show_port.pack()
 
+        ttk.Button(self, text='Quit', command=self.master.quit).pack(side=BOTTOM)
         self.next_page=ttk.Button(self, text='Next', state='disable' ,command=self.next)
         self.next_page.pack(side=BOTTOM)
-        ttk.Button(self, text='Quit', command=self.master.quit).pack(side=BOTTOM)
-
+        
     def set_host(self, temp):
         temp = self.host_entry.get()
         host=self.Sender.validate_host(temp)
@@ -157,11 +163,11 @@ class SenderPage(Frame):
             self.Sender.set_host(host)
             self.host_entry.delete(0, END)
             self.host_label['fg']='black'
-            self.host_label['text']=f'Target IP address is set to: {host}'
+            self.host_label['text']=f'Target IP address is set to - {host}'
         else:
             self.host_label['fg']='red'
             if self.Sender.host:
-                msg=f'IP address INVALID, still set to {self.Sender.host}'
+                msg=f'IP address INVALID, still set to - {self.Sender.host}'
             else:
                 msg='IP address INVALID, enter again!'
             
@@ -177,12 +183,12 @@ class SenderPage(Frame):
             self.Sender.set_port(port)
             self.port_entry.delete(0, END)
             self.port_label['fg']='black'
-            self.port_label['text']=f'Port address set to: {port}'
+            self.port_label['text']=f'Port address set to - {port}'
         
         else:
             self.port_label['fg']='red'
             if self.Sender.port:
-                msg=f'Port number INVALID, port is still set to {self.Sender.port}!'
+                msg=f'Port number INVALID, port is still set to - {self.Sender.port}!'
             else:
                 msg='Port number INVALID, enter again!'
 
@@ -192,7 +198,7 @@ class SenderPage(Frame):
     
     def enable_next(self):
         if self.Sender.host and self.Sender.port:
-            self.next_page['state']='enable'
+            self.next_page['state'] = 'enable'
         
     def next(self):
         self.master.transfer_object=self.Sender # Transfer the object to the next frame
@@ -208,8 +214,23 @@ class SenderPage2(Frame):
 
         # Add Widgets
         ttk.Label(self, text='Message Sender Page', font='"Product Sans" 20 bold').pack(side=TOP)
-        ttk.Label(self, text=self.Sender.port, font='"Product Sans" 12 bold').pack(side=TOP)
-        ttk.Label(self, text=self.Sender.host, font='"Product Sans" 12 bold').pack(side=TOP)
+        ttk.Label(self, text=f'Sending messages to {self.Sender.host}', font='"Product Sans" 12 bold').pack(side=TOP)
+        ttk.Label(self, text=f'On port {self.Sender.port}', font='"Product Sans" 10 italic').pack(side=TOP)
+
+        
+        self.send_message_btn=ttk.Button(self, text='Send', command=self.send_message)
+        self.send_message_btn.pack(side=BOTTOM)
+        self.message_entry = ttk.Entry(self, cursor='ibeam')
+        self.message_entry.pack(side=BOTTOM, fill=X)
+        
+
+    
+    def send_message(self):
+        data=self.message_entry.get()
+        self.message_entry.delete(0, END)
+        self.Sender.send_data(data.encode())
+
+        print(data, 'sent to', self.Sender.addr)
 
 
 
@@ -236,14 +257,17 @@ class ReceiverPage(Frame):
         # t.start()
 
     def check_new_messages(self):
-        task = Thread(target=self.check_messages_helper())
+        task = Thread(target=self.check_messages_helper)
         task.start()
+        
 
     def check_messages_helper(self):
         while True:
-            if self.thread_run:
+            if not self.thread_run:
                 break
+            print('Listening on',self.Receiver.host)
             data, addr = self.Receiver.sock.recvfrom(self.Receiver.buffer)
+            print('Got data-',data.decode())
             other = gethostbyname(addr)
             data = data.decode()
             self.data_label['text'] = f'{other}: {data}'
